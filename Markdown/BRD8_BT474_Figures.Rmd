@@ -1,0 +1,312 @@
+---
+title: "FigureGeneration"
+output: html_document:
+  keep_md: yes
+date: "2023-03-03"
+---
+
+## Load libraries and data for scRNA-seq. harmony_BT474.rda contains a Seurat object (hnc) and a dataframe of marker genes
+
+```{r setup, include=FALSE}
+library(Seurat)
+load('../Data/harmony_BT474.rda')
+library(ggplot2)
+library(ComplexHeatmap)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(ggrepel)
+library(data.table)
+library(strex)
+library(Rsubread)
+library(Homo.sapiens)
+library(edgeR)
+library(ggplot2)
+library(ggrepel)
+library(gplots)
+library(RColorBrewer)
+library(dplyr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Including Plots
+
+Figure 2A - BT474 scRNA-seq UMAP: all treatments combined
+
+```{r Combined UMAP}
+DimPlot(hnc,group.by='cluster',label=T)
+```
+
+Figure 2B - BT474 scRNA-seq UMAP: split by treatments
+
+```{r Split UMAP}
+DimPlot(hnc,group.by='cluster',label=T,split.by='type',ncol = 2)
+```
+
+Figure 2C - % Composition of clusters by treatments
+
+```{r Cluster Composition Heatmap}
+draw(Heatmap(prop.table(table(hnc$cluster,hnc$type),margin = 1)*100,
+             row_title = 'Cluster',row_title_side = 'right',
+             column_title='Treatment',column_title_side = 'bottom',
+             heatmap_legend_param = list(title='% of Cluster'),column_order = unique(hnc$type)),
+     column_title='Composition of Clusters by Treatment',column_title_gp = gpar(fontsize = 28),heatmap_legend_side='left')
+```
+
+Figure 2D - Neratinib induced and neratinib excluded DE gene sets
+
+```{r Treatment DE Gene Heatmap,echo=False}
+Idents(hnc)<-'type'
+both_up_ful<-FindMarkers(hnc,ident.2 = "2.fullvestrant",ident.1 = '4.both',test.use = 'MAST',only.pos = T)%>%filter(abs(avg_log2FC)>0.5,p_val_adj<=0.01)%>%arrange(desc(avg_log2FC))
+both_up_dmso<-FindMarkers(hnc,ident.1 = "4.both",ident.2 = '1.DMSO',test.use = 'MAST',only.pos = T)%>%filter(abs(avg_log2FC)>0.5,p_val_adj<=0.01)%>%arrange(desc(avg_log2FC))
+ner_up_dmso<-FindMarkers(hnc,ident.1 = "3.neratinib",ident.2 = '1.DMSO',test.use = 'MAST',only.pos = T)%>%filter(abs(avg_log2FC)>0.5,p_val_adj<=0.01)%>%arrange(desc(avg_log2FC))
+ner_up_ful<-FindMarkers(hnc,ident.2 = "2.fullvestrant",ident.1 = '3.neratinib',test.use = 'MAST',only.pos = T)%>%filter(abs(avg_log2FC)>0.5,p_val_adj<=0.01)%>%arrange(desc(avg_log2FC))
+
+dmso_up_ner<-FindMarkers(hnc,ident.2 = "3.neratinib",ident.1 = '1.DMSO',test.use = 'MAST',only.pos = T)%>%filter(abs(avg_log2FC)>0.5,p_val_adj<=0.01)%>%arrange(desc(avg_log2FC))
+dmso_up_both<-FindMarkers(hnc,ident.2 = "4.both",ident.1 = '1.DMSO',test.use = 'MAST',only.pos = T)%>%filter(abs(avg_log2FC)>0.5,p_val_adj<=0.01)%>%arrange(desc(avg_log2FC))
+ful_up_ner<-FindMarkers(hnc,ident.1='2.fullvestrant',ident.2='3.neratinib',test.use='MAST',only.pos = T)%>%filter(abs(avg_log2FC)>0.5,p_val_adj<=0.01)%>%arrange(desc(avg_log2FC))
+ful_up_both<-FindMarkers(hnc,ident.1='2.fullvestrant',ident.2='4.both',test.use='MAST',only.pos = T)%>%filter(abs(avg_log2FC)>0.5,p_val_adj<=0.01)%>%arrange(desc(avg_log2FC))
+
+gsig1<-Reduce(intersect,list(rownames(both_up_ful),
+                      rownames(both_up_dmso),
+                      rownames(ner_up_dmso),
+                      rownames(ner_up_ful)))
+gsig2<-Reduce(intersect,list(rownames(dmso_up_both),
+                     rownames(dmso_up_ner),
+                     rownames(ful_up_ner),
+                     rownames(ful_up_both)))
+
+hnc<-ScaleData(hnc,features=c(rownames(hnc@assays$RNA@scale.data),gsig1,gsig2))
+hnc$clusters_by_class=factor(hnc$seurat_clusters,levels=c('0','2','5','1','3','7','4','6','8','9'))
+
+DoHeatmap(hnc,features=c(gsig1,gsig2),group.by='clusters_by_class',raster = F)
+```
+
+Figure 3D - Violin plot of ESR1 expression by cluster and treatment
+
+```{r ESR1 Violin Plot, echo=FALSE}
+VlnPlot(hnc, features='ESR1',group.by = 'cluster',split.by='type',cols = c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE"))
+```
+
+Figure 3E - Violin plot of PGR expression by cluster and treatment
+
+```{r PGR Violin Plot, echo=FALSE}
+VlnPlot(hnc, features='PGR',group.by = 'cluster',split.by='type',cols = c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE"))
+```
+
+Figure 3F - Violin plot of GREB1 expression by cluster and treatment
+
+```{r ESR1 Violin Plot, echo=FALSE}
+VlnPlot(hnc, features='GREB1',group.by = 'cluster',split.by='type',cols = c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE"))
+```
+
+Figure 3G - Violin plot of BRD8 expression by cluster and treatment
+
+```{r PGR Violin Plot, echo=FALSE}
+VlnPlot(hnc, features='BRD8',group.by = 'cluster',split.by='type',cols = c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE"))
+```
+
+Figure 3H - log2FC of % expression between NER and DMSO
+
+```{r Gene log2FC % expression NER vs DMSO, echo=FALSE}
+er_target_genes=read.csv('../Data/ER_targets_update.csv')
+baseDotplot<-DotPlot(hnc,features = unique(er_target_genes$ER.Targets))
+keep_features<-unique(baseDotplot$data$features.plot)
+dmso_ner_hnc=subset(hnc, subset = type %in% c('1.DMSO','3.neratinib'))
+pct_exp_full_dmsoner<-DotPlot(dmso_ner_hnc[keep_features,],features=keep_features,group.by = 'cluster')$data
+colnames(pct_exp_full_dmsoner)=c('avg_exp','pct_exp','gene','cluster','scaled_exp')
+er_pctexp_dmsoner_heatmap_pivot<-pivot_wider(pct_exp_full_dmsoner,
+                                             id_cols='gene',
+                                             names_from = 'cluster',
+                                             values_from='pct_exp')
+er_pctexp_dmsoner_heatmap_mtx=as.matrix(er_pctexp_dmsoner_heatmap_pivot[,c(2:11)])
+rownames(er_pctexp_dmsoner_heatmap_mtx)<-er_pctexp_dmsoner_heatmap_pivot$gene
+er_pctexp_dmsoner_heatmap_mtx=er_pctexp_dmsoner_heatmap_mtx[,c('0','2','5','1','3','7','4','6','8','9')]
+aggregate_dmsoner_pctexp<-cbind(rowMeans(er_pctexp_dmsoner_heatmap_mtx[,c(1:3)]),
+                                rowMeans(er_pctexp_dmsoner_heatmap_mtx[,c(4:6)]),
+                                rowMeans(er_pctexp_dmsoner_heatmap_mtx[,c(7:10)]))
+colnames(aggregate_dmsoner_pctexp)<-c('DMSO Enriched',
+                                      'NER Enriched',
+                                      'Mixed')
+pct_exp_fold_change_dmsoner_scatter<-as.data.frame(rev(sort(log((aggregate_dmsoner_pctexp[,2]+1e-6)/(aggregate_dmsoner_pctexp[,1]+1e-6),base = 2))))
+colnames(pct_exp_fold_change_dmsoner_scatter)<-'log2FC'
+pct_exp_fold_change_dmsoner_scatter$Rank<-1:227
+pct_exp_fold_change_dmsoner_scatter$Gene<-rownames(pct_exp_fold_change_dmsoner_scatter)
+pct_exp_fold_change_dmsoner_scatter %>% mutate(Label=ifelse((Rank<11|Rank>216|Gene %in% c('ESR1','PGR','GREB1')),
+                                                            Gene,
+                                                            '')) -> pct_exp_fold_change_dmsoner_scatter
+dmsoner_grouped_er_target_10cell_filt<-aggregate_dmsoner_pctexp[aggregate_dmsoner_pctexp[,1]>100*(5/3309)&
+                                                   aggregate_dmsoner_pctexp[,2]>100*(5/2276),]
+dmsoner_fold_change_scatter_filt<-as.data.frame(rev(sort(log((dmsoner_grouped_er_target_10cell_filt[,2]+1e-6)/(dmsoner_grouped_er_target_10cell_filt[,1]+1e-6),base = 2))))
+colnames(dmsoner_fold_change_scatter_filt)<-'log2FC'
+dmsoner_fold_change_scatter_filt$Rank<-1:dim(dmsoner_fold_change_scatter_filt)[1]
+dmsoner_fold_change_scatter_filt$Gene<-rownames(dmsoner_fold_change_scatter_filt)
+dmsoner_fold_change_scatter_filt %>% mutate(Label=ifelse((Rank<11|Rank>dim(dmsoner_fold_change_scatter_filt)[1]-11)|Gene %in% c('ESR1','PGR','GREB1'),
+                                                 Gene,
+                                                 '')) -> dmsoner_fold_change_scatter_filt
+
+ggplot(dmsoner_fold_change_scatter_filt,aes(x=Rank,y=log2FC,label=Label)) + 
+  geom_point() + 
+  geom_label_repel(max.overlaps = 30,size=2) + 
+  ggtitle('log2FC of gene expression % between NER enriched and DMSO enriched clusters')
+
+```
+
+Figure S3C - log2FC of % expression between NER/Both and DMSO/FUL
+
+```{r Gene log2FC % expression NER/Both vs DMSO/FUL, echo=FALSE}
+er_target_genes=read.csv('../Data/ER_targets_update.csv')
+her2i_sig=read.csv('../Data/Her2InhibitorySensitivitySignature.csv',header = F)
+baseDotplot<-DotPlot(hnc,features = unique(er_target_genes$ER.Targets))+coord_flip()
+keep_features<-unique(baseDotplot$data$features.plot)
+
+pct_exp_full_seurat<-DotPlot(hnc[keep_features,],features=keep_features,group.by = 'cluster')$data
+colnames(pct_exp_full_seurat)=c('avg_exp','pct_exp','gene','cluster','scaled_exp')
+er_pctexp_heatmap_pivot<-pivot_wider(pct_exp_full_seurat,
+            id_cols='gene',
+            names_from = 'cluster',
+            values_from='pct_exp')
+er_pctexp_heatmap_mtx=as.matrix(er_pctexp_heatmap_pivot[,c(2:11)])
+rownames(er_pctexp_heatmap_mtx)=er_pctexp_heatmap_pivot$gene
+er_pct_exp_reorder<-er_pctexp_heatmap_mtx[,c('0','2','5','1','3','7','4','6','8','9')]
+grouped_er_target<-cbind(rowMeans(er_pct_exp_reorder[,c(1:3)]),
+      rowMeans(er_pct_exp_reorder[,c(4:6)]),
+      rowMeans(er_pct_exp_reorder[,c(7:10)]))
+colnames(grouped_er_target)<-c('DMSO/FUL Enriched',
+                               'NER/Both Enriched',
+                               'Mixed')
+grouped_er_target_10cell_filt<-grouped_er_target[grouped_er_target[,1]>100*(10/5946)&
+                    grouped_er_target[,2]>100*(10/4802),]
+fold_change_scatter_filt<-as.data.frame(rev(sort(log(grouped_er_target_10cell_filt[,2]/grouped_er_target_10cell_filt[,1],base = 2))))
+colnames(fold_change_scatter_filt)<-'log2FC'
+fold_change_scatter_filt$Rank<-1:201
+fold_change_scatter_filt$Gene<-rownames(fold_change_scatter_filt)
+fold_change_scatter_filt %>% mutate(Label=ifelse((Rank<11|Rank>190|Gene %in% c('ESR1','PGR','GREB1')),
+                                            Gene,
+                                            '')) -> fold_change_scatter_filt
+
+ggplot(fold_change_scatter_filt,aes(x=Rank,y=log2FC,label=Label)) + 
+  geom_point() + 
+  geom_label_repel(max.overlaps = 40) + 
+  ggtitle('log2FC of gene expression % between NER/Both enriched and FUL/DMSO enriched clusters')
+```
+```{r BRD8_KO vs Parental in DMSO Volcano Plot, echo=FALSE}
+BT474_feature_counts<-readRDS('../Data/BT474_Rsubread_featurecounts.rds')
+BT474_DGEList<-DGEList(BT474_feature_counts$counts)
+BT474_DGEList$samples$group_index<-as.factor(c(1,1,1,2,2,2,3,3,3,4,4,4))
+BT474_DGEList$samples$group<-as.factor(
+  c(rep('WT_DMSO',3),
+    rep('KO_DMSO',3),
+    rep('WT_NER',3),
+    rep('KO_NER',3))
+)
+BT474_DGEList$genes<- select(Homo.sapiens, keys=rownames(BT474_DGEList), columns=c("SYMBOL"), 
+                             keytype="ENTREZID")
+group=as.factor(BT474_DGEList$samples$group)
+design <- model.matrix(~0+group)
+colnames(design) <- gsub("group", "", colnames(design))
+contr.matrix <- makeContrasts(
+  WT_Compare = WT_NER-WT_DMSO, 
+  DMSO_Compare = KO_DMSO - WT_DMSO, 
+  KO_Compare = KO_NER-KO_DMSO,
+  NER_Compare = KO_NER-WT_NER,
+  levels = colnames(design)
+)
+
+par(mfrow=c(1,2))
+v <- voom(BT474_DGEList, design)
+vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+
+par(mfrow=c(1,1))
+tfit <- treat(vfit, lfc=1)
+dt <- decideTests(tfit)
+wt.vs.ko.dmso <- topTreat(tfit, coef=2, n=Inf)
+wt.vs.ko.dmso.topgenes <- wt.vs.ko.dmso$ENTREZID[1:100]
+i <- which(v$genes$ENTREZID %in% wt.vs.ko.dmso.topgenes)
+mycol <- colorpanel(1000,"blue","white","red")
+wt.vs.ko.dmso %>% arrange(desc(logFC)) -> wt.vs.ko.dmso
+wt.vs.ko.dmso.fullgene<-cbind(wt.vs.ko.dmso[,c('SYMBOL','logFC','P.Value','adj.P.Val')],
+                              log2(BT474_DGEList$counts[rownames(wt.vs.ko.dmso),c(4:6,1:3)]))
+wt.vs.ko.dmso.fullgene %>% dplyr::filter(adj.P.Val<=0.05) -> wt.vs.ko.dmso.siggenes
+
+wt.vs.ko.dmso <- data.frame(wt.vs.ko.dmso) %>% mutate(log_pval=-log10(adj.P.Val)) %>% mutate(upregulated=(logFC>=1)) %>% mutate(downregulated=(logFC<=-1)) %>% mutate(color=case_when(
+  SYMBOL %in% c('RBM24','ITGB6') ~ 'darkgreen',
+  upregulated==T&log_pval>=1.3 ~ 'red',
+  downregulated==T&log_pval>=1.3 ~ 'blue',
+  (upregulated==F&downregulated==F)|(log_pval<1.3) ~'black'
+)
+)
+
+ggplot(data=wt.vs.ko.dmso%>%arrange(desc(color)),aes(x=logFC,y=log_pval)) +
+  geom_point(aes(colour=color)) + 
+  scale_color_identity() + 
+  theme_classic() + 
+  geom_vline(xintercept = c(-1,1),linetype=2) + 
+  geom_hline(yintercept = 1.3,linetype=2) +
+  ggrepel::geom_text_repel(aes(label=ifelse(SYMBOL %in% c('TCN1','TFF1','MYC','IGFBP5','GREB1','PGR','TIMP2','ID3','CDKN1A','TBX10','ITGB6','RBM24'),SYMBOL,""),colour=ifelse(color=='darkgreen','darkgreen','black')),max.overlaps = 50) +
+  ggtitle('DE Genes - BRD8 KO vs WT in DMSO Treatments')
+ggsave('../Images/Fig6A_BT474Bulk_BRD8KOvWT_DMSO_Volcano.png')
+
+```
+
+```{r BRD8_KO vs Parental in NER Volcano Plot, echo=FALSE}
+BT474_DGEList<-DGEList(BT474_feature_counts$counts)
+BT474_DGEList$samples$group_index<-as.factor(c(1,1,1,2,2,2,3,3,3,4,4,4))
+BT474_DGEList$samples$group<-as.factor(
+  c(rep('WT_DMSO',3),
+    rep('KO_DMSO',3),
+    rep('WT_NER',3),
+    rep('KO_NER',3))
+)
+BT474_DGEList$genes<- select(Homo.sapiens, keys=rownames(BT474_DGEList), columns=c("SYMBOL"), 
+                             keytype="ENTREZID")
+group=as.factor(BT474_DGEList$samples$group)
+design <- model.matrix(~0+group)
+colnames(design) <- gsub("group", "", colnames(design))
+contr.matrix <- makeContrasts(
+  WT_Compare = WT_NER-WT_DMSO, 
+  DMSO_Compare = KO_DMSO - WT_DMSO, 
+  KO_Compare = KO_NER-KO_DMSO,
+  NER_Compare = KO_NER-WT_NER,
+  levels = colnames(design)
+)
+
+par(mfrow=c(1,2))
+v <- voom(BT474_DGEList, design)
+vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+
+par(mfrow=c(1,1))
+tfit <- treat(vfit, lfc=1)
+dt <- decideTests(tfit)
+
+wt.vs.ko.ner <- topTreat(tfit, coef=4, n=Inf)
+wt.vs.ko.ner.topgenes <- wt.vs.ko.ner$ENTREZID[1:100]
+i <- which(v$genes$ENTREZID %in% wt.vs.ko.ner.topgenes)
+mycol <- colorpanel(1000,"blue","white","red")
+wt.vs.ko.ner %>% arrange(desc(logFC)) -> wt.vs.ko.ner
+wt.vs.ko.ner.fullgene<-cbind(wt.vs.ko.ner[,c('SYMBOL','logFC','P.Value','adj.P.Val')],
+                             log2(BT474_DGEList$counts[rownames(wt.vs.ko.ner),c(4:6,1:3)]))
+wt.vs.ko.ner.fullgene %>% dplyr::filter(adj.P.Val<=0.05) -> wt.vs.ko.ner.siggenes
+
+wt.vs.ko.ner <- data.frame(wt.vs.ko.ner) %>% mutate(log_pval=-log10(adj.P.Val)) %>% mutate(upregulated=(logFC>=1)) %>% mutate(downregulated=(logFC<=-1)) %>% mutate(color=case_when(SYMBOL %in% c('RBM24','ITGB6') ~ 'darkgreen',
+                                                                                                                                                                                    upregulated==T&log_pval>=1.3 ~ 'red',
+                                                                                                                                                                                    downregulated==T&log_pval>=1.3 ~ 'blue',
+                                                                                                                                                                                    (upregulated==F&downregulated==F)|(log_pval<1.3) ~'black'))
+
+ggplot(data=wt.vs.ko.ner%>%arrange(desc(color)),aes(x=logFC,y=log_pval)) +
+  geom_point(aes(colour=color)) + 
+  scale_color_identity() + 
+  theme_classic() + 
+  geom_vline(xintercept = c(-1,1),linetype=2) + 
+  geom_hline(yintercept = 1.3,linetype=2) +
+  ggrepel::geom_text_repel(aes(label=ifelse(SYMBOL %in% c('TCN1','TFF1','MYC','IGFBP5','GREB1','PGR','TIMP2','ID3','TXNIP','TBX10','RBM24','ITGB6'),SYMBOL,""),colour=ifelse(color=='darkgreen','darkgreen','black')),max.overlaps = 50) +
+  ggtitle('DE Genes - BRD8 KO vs WT in NER Treatments')
+ggsave('../Images/Fig6D_BT474Bulk_BRD8KOvWT_NER_Volcano.png')
+```
+
+
+
